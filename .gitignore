@@ -1,0 +1,15 @@
+node_modules/
+.env
+dist/
+build/
+*.log
+.DS_Store
+tunnel_url.txt
+tunnel_url_new.txt
+tunnel_output.txt
+tunnel_log.txt
+lt_debug.txt
+lt_output.txt
+*.ps1
+coverage/
+.tsx/
