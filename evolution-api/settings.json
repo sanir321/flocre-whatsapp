@@ -1,0 +1,9 @@
+{
+    "rejectCall": false,
+    "msgCall": "",
+    "groupsIgnore": false,
+    "alwaysOnline": true,
+    "readMessages": true,
+    "readStatus": false,
+    "syncFullHistory": true
+}

@@ -10,8 +10,13 @@
 
 ## 🏗️ Core Instance Management
 
-### 1. Smart Connection (The All-in-One)
-This is the only endpoint you'll likely need for onboarding users. It intelligently detects if an instance exists and returns a QR code accordingly.
+### 1. Smart Connection (Auto-History Sync)
+This endpoint handles the entire lifecycle:
+1.  **Creates Instance** (if new).
+2.  **Enables Full History Sync** (automatically).
+3.  **Generates QR Code** for scanning.
+
+This ensures that when your user scans the QR code, their **entire chat history** is synced to your database.
 
 ```http
 POST /api/whatsapp/connect
@@ -19,7 +24,7 @@ Content-Type: application/json
 apikey: flowcore123
 
 {
-    "instanceName": "user_id_001"
+    "instanceName": "unique_user_id_001"
 }
 ```
 
@@ -30,7 +35,7 @@ apikey: flowcore123
 ```json
 {
     "instance": {
-        "instanceName": "user_id_001",
+        "instanceName": "unique_user_id_001",
         "status": "connecting"
     },
     "qrcode": "2@...base64_string..."

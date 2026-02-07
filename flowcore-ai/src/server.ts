@@ -57,11 +57,23 @@ app.post('/webhook/evolution', (req: express.Request, res: express.Response) => 
 
     // Handle specific events
     if (event === 'messages.upsert') {
-        // This is where we will hook in the AI Agent logic
-        // data.message -> contains the message content
-        console.log('Received Message:', JSON.stringify(data, null, 2));
+        const msg = data.data || data;
+        const messageType = Object.keys(msg.message || {})[0];
+        const from = msg.key?.remoteJid;
+        const fromMe = msg.key?.fromMe;
 
-        // TODO: Verify if message is from user (not fromMe) and reply
+        if (!fromMe) {
+            console.log(`[Webhook] 📩 Received ${messageType} from ${from}`);
+            // TODO: Call Platform API to save message
+        }
+    }
+
+    if (event === 'contacts.upsert') {
+        const contacts = Array.isArray(data) ? data : (data.data || []);
+        for (const contact of contacts) {
+            console.log(`[Webhook] 👤 New Contact Synced: ${contact.id} (${contact.name || contact.pushName || 'Unknown'})`);
+            // TODO: Call Platform API to create contact
+        }
     }
 
     if (event === 'qrcode.updated') {
@@ -75,6 +87,66 @@ app.post('/webhook/evolution', (req: express.Request, res: express.Response) => 
     }
 
     res.sendStatus(200);
+});
+
+// I. Check User & Sync (Platform -> WhatsApp)
+app.post('/api/whatsapp/check-user', async (req, res) => {
+    const { instanceName, number } = req.body;
+
+    if (!instanceName || !number) {
+        return res.status(400).json({ error: 'Missing instanceName or number' });
+    }
+
+    try {
+        console.log(`[API] Checking user ${number} on ${instanceName}`);
+
+        // 1. Check existence
+        const formattedNumber = number.replace(/\D/g, '');
+        const existsRes = await axios.post(`${EVO_API_URL}/chat/whatsappNumbers/${instanceName}`, {
+            numbers: [formattedNumber]
+        }, { headers: { 'apikey': EVO_API_KEY } });
+
+        const result = existsRes.data[0];
+
+        if (!result?.exists) {
+            return res.json({ exists: false });
+        }
+
+        // 2. Fetch Profile Picture
+        let profilePicUrl = null;
+        try {
+            const ppRes = await axios.post(`${EVO_API_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
+                number: formattedNumber
+            }, { headers: { 'apikey': EVO_API_KEY } });
+            profilePicUrl = ppRes.data.profilePictureUrl;
+        } catch (e) {
+            console.warn(`[API] Failed to fetch profile pic for ${number}`);
+        }
+
+        // 3. Fetch Profile Info (Status/About)
+        let status = null;
+        try {
+            const profileRes = await axios.post(`${EVO_API_URL}/chat/fetchProfile/${instanceName}`, {
+                number: formattedNumber
+            }, { headers: { 'apikey': EVO_API_KEY } });
+            status = profileRes.data.status;
+        } catch (e) {
+            console.warn(`[API] Failed to fetch profile status for ${number}`);
+        }
+
+        res.json({
+            exists: true,
+            jid: result.jid,
+            profile: {
+                picture: profilePicUrl,
+                status: status
+            }
+        });
+
+    } catch (error: any) {
+        console.error('[API] Error checking user:', error.response?.data || error.message);
+        res.status(500).json({ error: 'Failed to check user' });
+    }
 });
 
 // 3. API Client Wrapper (Actions Triggered by User/AI)
@@ -103,17 +175,42 @@ app.post('/api/whatsapp/connect', async (req, res) => {
             return res.json(connectResponse.data);
         }
 
-        // 2. If it doesn't exist, Create it
+        // 2. If it doesn't exist, Create it (Step 1: Create without QR)
         console.log(`[API] Instance "${instanceName}" not found. Creating new instance...`);
-        const createResponse = await axios.post(`${EVO_API_URL}/instance/create`, {
+        await axios.post(`${EVO_API_URL}/instance/create`, {
             instanceName: instanceName,
             integration: "WHATSAPP-BAILEYS",
-            qrcode: true
+            qrcode: false
         }, {
             headers: { 'apikey': EVO_API_KEY }
         });
 
-        // 3. Configure Webhook
+        // Step 2: Enable Full History Sync
+        console.log(`[API] Configuring History Sync for "${instanceName}"...`);
+        try {
+            await axios.post(`${EVO_API_URL}/settings/set/${instanceName}`, {
+                syncFullHistory: true,
+                readMessages: true,
+                readStatus: false,
+                alwaysOnline: true,
+                rejectCall: false,
+                groupsIgnore: false,
+            }, {
+                headers: { 'apikey': EVO_API_KEY }
+            });
+        } catch (settingsError: any) {
+            console.error(`[API] Settings config failed:`, settingsError.message);
+        }
+
+        // Step 3: Connect and Get QR
+        console.log(`[API] Initiating connection for "${instanceName}"...`);
+        const connectResponse = await axios.get(`${EVO_API_URL}/instance/connect/${instanceName}`, {
+            headers: { 'apikey': EVO_API_KEY }
+        });
+
+        const createResponse = connectResponse; // Use connect response as determination for success
+
+        // 4. Configure Webhook
         try {
             await axios.post(`${EVO_API_URL}/webhook/set/${instanceName}`, {
                 url: `http://localhost:${PORT}/webhook/evolution`,
