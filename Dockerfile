@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install system dependencies
-RUN apk add --no-cache python3 make g++ ffmpeg openssl
+RUN apk add --no-cache python3 make g++ ffmpeg openssl dos2unix
 
 WORKDIR /app
 
@@ -42,6 +42,7 @@ RUN tsc
 # --- 4. Setup Runner ---
 WORKDIR /app
 COPY start-all.sh ./
+RUN dos2unix start-all.sh
 RUN chmod +x start-all.sh
 
 # Copy Frontend Build to API
