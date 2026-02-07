@@ -1,18 +1,28 @@
-#!/bin/sh
+#!/bin/bash
 
-# 1. Start Evolution API (Background)
-# Force port 8080 for internal API
-export SERVER_PORT=8080
-export SERVER_URL=http://localhost:8080
+echo "Starting Evolution Lab - All Services"
+
+# Start Evolution API in background
 echo "Starting Evolution API on port 8080..."
-cd /app/evolution-api
-# Run with increased memory limit (scoped to this process only)
-NODE_OPTIONS="--max-old-space-size=2048" npm run start:prod &
+cd evolution-api
+npm run start:prod &
+EVOLUTION_PID=$!
+echo "Evolution API PID: $EVOLUTION_PID"
 
-# 2. Start Flowcore AI (Foreground)
-# Railway will provide PORT. Flowcore AI must listen on it.
-echo "Starting Flowcore AI on port $PORT..."
-cd /app/flowcore-ai
-# Unset NODE_OPTIONS to avoid conflicts
-unset NODE_OPTIONS
-node dist/server.js
+# Wait for Evolution API to initialize
+sleep 5
+
+# Start Flowcore AI
+echo "Starting Flowcore AI on port 3000..."
+cd ../flowcore-ai
+npm start &
+FLOWCORE_PID=$!
+echo "Flowcore AI PID: $FLOWCORE_PID"
+
+echo "All services started!"
+echo "Evolution API: http://localhost:8080"
+echo "Flowcore AI: http://localhost:3000"
+echo "Manager UI: http://localhost:3000/manager"
+
+# Keep script running and wait for both processes
+wait $EVOLUTION_PID $FLOWCORE_PID

@@ -1,0 +1,23 @@
+{
+    "name": "evolution-lab",
+    "version": "1.0.0",
+    "description": "WhatsApp Platform Integration - Complete Stack",
+    "scripts": {
+        "install:evolution": "cd evolution-api && npm install",
+        "install:flowcore": "cd flowcore-ai && npm install",
+        "build:evolution": "cd evolution-api && npm run build",
+        "build:flowcore": "cd flowcore-ai && npm run build",
+        "build": "npm run build:evolution && npm run build:flowcore",
+        "start": "node start.js"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "keywords": [
+        "whatsapp",
+        "evolution-api",
+        "platform-integration"
+    ],
+    "author": "",
+    "license": "ISC"
+}

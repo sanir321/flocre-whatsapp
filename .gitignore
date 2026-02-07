@@ -1,9 +1,47 @@
+# Dependencies
 node_modules/
-.env
+evolution-api/node_modules/
+flowcore-ai/node_modules/
+
+# Build outputs
 dist/
+evolution-api/dist/
+flowcore-ai/dist/
+*.tsbuildinfo
 build/
+
+# Environment variables
+.env
+.env.local
+.env.production
+evolution-api/.env
+flowcore-ai/.env
+
+# Logs
 *.log
+npm-debug.log*
+logs/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test files
+test_*.json
+*.test.js
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Tunnel files
 tunnel_url.txt
 tunnel_url_new.txt
 tunnel_output.txt
