@@ -4,6 +4,8 @@
 # Force port 8080 for internal API
 export SERVER_PORT=8080
 export SERVER_URL=http://localhost:8080
+# Increase memory limit to prevent heap errors
+export NODE_OPTIONS="--max-old-space-size=2048"
 echo "Starting Evolution API on port 8080..."
 cd /app/evolution-api
 # Run in background, logging to stdout for visibility
