@@ -8,9 +8,9 @@ WORKDIR /app
 # --- 1. Build Frontend (Evolution Manager) ---
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY evolution-manager-v2/package*.json ./
+COPY evolution-api/evolution-manager-v2/package*.json ./
 RUN npm ci
-COPY evolution-manager-v2 .
+COPY evolution-api/evolution-manager-v2 .
 # Increase memory for build if needed
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
