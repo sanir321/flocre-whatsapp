@@ -14,6 +14,7 @@ RUN npm ci
 COPY evolution-api/src ./src
 COPY evolution-api/prisma ./prisma
 COPY evolution-api/runWithProvider.js ./
+COPY evolution-api/tsup.config.ts ./
 RUN npm run db:generate
 RUN npm run build
 
