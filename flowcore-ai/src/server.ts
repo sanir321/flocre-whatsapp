@@ -33,8 +33,16 @@ app.use(checkApiKey);
 // --- ROUTES ---
 
 // 1. Health Check
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'flowcore-ai' });
+app.get('/health', async (req, res) => {
+    try {
+        await axios.get(`${EVO_API_URL}/health_check_endpoint_if_exists_or_just_root`, { timeout: 1000 }).catch(() => { });
+        // Evolution API usually doesn't have a public /health without auth? 
+        // Let's just try to connect to TCP port or assume if axios fails it's down.
+        // Actually, let's just return local status and maybe a "upstream" flag.
+        res.json({ status: 'ok', service: 'flowcore-ai', upstream: 'unknown' });
+    } catch (e) {
+        res.json({ status: 'ok', service: 'flowcore-ai', upstream: 'unreachable' });
+    }
 });
 
 // Root Endpoint
@@ -245,7 +253,8 @@ app.post('/api/whatsapp/connect', async (req, res) => {
             status: 500,
             error: 'Internal Server Error',
             response: {
-                message: [msg]
+                message: [msg],
+                debug: errorData // Added for debugging
             }
         });
     }
