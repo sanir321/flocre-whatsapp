@@ -54,4 +54,4 @@ COPY --from=frontend-builder /app/frontend/dist ./manager/dist
 # Expose the Railway Port (Railway sets $PORT, but we expose 3000 as default)
 EXPOSE 3000
 
-CMD ["./start-all.sh"]
+CMD ["/app/start-all.sh"]
