@@ -1,0 +1,19 @@
+{
+    "phases": {
+        "install": {
+            "cmds": [
+                "cd evolution-api && npm ci",
+                "cd flowcore-ai && npm ci"
+            ]
+        },
+        "build": {
+            "cmds": [
+                "cd evolution-api && npm run build",
+                "cd flowcore-ai && npm run build"
+            ]
+        }
+    },
+    "start": {
+        "cmd": "node start.js"
+    }
+}
