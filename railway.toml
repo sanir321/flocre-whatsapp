@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "cd evolution-api && npm ci && npx prisma generate --schema=./prisma/postgresql-schema.prisma && npm run build && cd ../flowcore-ai && npm ci && npm run build"
+buildCommand = "cd evolution-api && npm ci && npx prisma generate --schema=./prisma/postgresql-schema.prisma && cd ../flowcore-ai && npm ci && npm run build"
 
 [deploy]
 startCommand = "node start.js"

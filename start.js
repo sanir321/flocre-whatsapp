@@ -98,7 +98,7 @@ function shutdown(code = 0) {
 
 // Start Evolution API
 console.log('\n📡 Starting Evolution API on port 8080...');
-evolutionApi = spawn('npm', ['run', 'start:prod'], {
+evolutionApi = spawn('npm', ['run', 'dev:stable'], {
     cwd: path.join(__dirname, 'evolution-api'),
     stdio: 'inherit',
     shell: true,
