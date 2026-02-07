@@ -5,7 +5,18 @@ RUN apk add --no-cache python3 make g++ ffmpeg openssl
 
 WORKDIR /app
 
-# --- 1. Setup Evolution API ---
+# --- 1. Build Frontend (Evolution Manager) ---
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY evolution-manager-v2/package*.json ./
+RUN npm ci
+COPY evolution-manager-v2 .
+# Increase memory for build if needed
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN npm run build
+
+# --- 2. Setup Evolution API (Backend) ---
+FROM node:20-alpine AS backend-builder
 WORKDIR /app/evolution-api
 COPY evolution-api/package*.json ./
 COPY evolution-api/tsconfig.json ./
@@ -28,10 +39,16 @@ COPY flowcore-ai/src ./src
 RUN npm install typescript -g
 RUN tsc
 
-# --- 3. Setup Runner ---
+# --- 4. Setup Runner ---
 WORKDIR /app
 COPY start-all.sh ./
 RUN chmod +x start-all.sh
+
+# Copy Frontend Build to API
+WORKDIR /app/evolution-api
+# Create directory structure just in case
+RUN mkdir -p manager/dist
+COPY --from=frontend-builder /app/frontend/dist ./manager/dist
 
 # Expose the Railway Port (Railway sets $PORT, but we expose 3000 as default)
 EXPOSE 3000

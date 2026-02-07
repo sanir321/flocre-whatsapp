@@ -1,34 +1,31 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
-
 import cors from 'cors';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const EVO_API_URL = process.env.EVO_API_URL || 'http://localhost:8080';
-const EVO_API_KEY = process.env.EVO_API_KEY || 'flowcore123';
+const EVO_API_URL = (process.env.EVO_API_URL || 'http://localhost:8080').replace(/\/$/, '');
+const EVO_API_KEY = (process.env.EVO_API_KEY || 'flowcore123').trim();
+
+console.log(`[Flowcore] Starting...`);
+console.log(`[Flowcore] Connecting to Evolution API at: ${EVO_API_URL}`);
+console.log(`[Flowcore] Using Evolution API Key: ${EVO_API_KEY.substring(0, 3)}***${EVO_API_KEY.slice(-3)}`);
 
 app.use(cors());
-app.use(express.json());
 
-// API Key Middleware
+// API Key Middleware (Scoped)
 const FLOWCORE_API_KEY = 'flowcore123';
 const checkApiKey = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // Skip auth for health, webhook, and root
-    if (req.path === '/health' || req.path === '/' || req.path.startsWith('/webhook/')) {
-        return next();
-    }
-
     const apiKey = req.headers['apikey'];
     if (apiKey !== FLOWCORE_API_KEY) {
         return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
     next();
 };
-app.use(checkApiKey);
 
 // --- ROUTES ---
 
@@ -36,9 +33,6 @@ app.use(checkApiKey);
 app.get('/health', async (req, res) => {
     try {
         await axios.get(`${EVO_API_URL}/health_check_endpoint_if_exists_or_just_root`, { timeout: 1000 }).catch(() => { });
-        // Evolution API usually doesn't have a public /health without auth? 
-        // Let's just try to connect to TCP port or assume if axios fails it's down.
-        // Actually, let's just return local status and maybe a "upstream" flag.
         res.json({ status: 'ok', service: 'flowcore-ai', upstream: 'unknown' });
     } catch (e) {
         res.json({ status: 'ok', service: 'flowcore-ai', upstream: 'unreachable' });
@@ -57,8 +51,10 @@ app.get('/', (req, res) => {
     });
 });
 
-// 2. Webhook Handler (Listeners for Evolution API events)
-app.post('/webhook/evolution', (req: express.Request, res: express.Response) => {
+// 2. Webhook Handler (JSON Body)
+const webhookRouter = express.Router();
+webhookRouter.use(express.json());
+webhookRouter.post('/evolution', (req: express.Request, res: express.Response) => {
     const { event, data, instance, sender } = req.body;
 
     console.log(`[Webhook] Event: ${event} | Instance: ${instance || 'N/A'}`);
@@ -72,7 +68,6 @@ app.post('/webhook/evolution', (req: express.Request, res: express.Response) => 
 
         if (!fromMe) {
             console.log(`[Webhook] 📩 Received ${messageType} from ${from}`);
-            // TODO: Call Platform API to save message
         }
     }
 
@@ -80,13 +75,11 @@ app.post('/webhook/evolution', (req: express.Request, res: express.Response) => 
         const contacts = Array.isArray(data) ? data : (data.data || []);
         for (const contact of contacts) {
             console.log(`[Webhook] 👤 New Contact Synced: ${contact.id} (${contact.name || contact.pushName || 'Unknown'})`);
-            // TODO: Call Platform API to create contact
         }
     }
 
     if (event === 'qrcode.updated') {
         console.log('QR Code Updated:', data);
-        // TODO: Push to Frontend via WebSocket/SSE if building a real UI
     }
 
     if (event === 'connection.update') {
@@ -96,9 +89,16 @@ app.post('/webhook/evolution', (req: express.Request, res: express.Response) => 
 
     res.sendStatus(200);
 });
+app.use('/webhook', webhookRouter);
 
-// I. Check User & Sync (Platform -> WhatsApp)
-app.post('/api/whatsapp/check-user', async (req, res) => {
+
+// 3. API Routes (JSON Body + Auth)
+const apiRouter = express.Router();
+apiRouter.use(express.json());
+apiRouter.use(checkApiKey);
+
+// I. Check User & Sync
+apiRouter.post('/check-user', async (req, res) => {
     const { instanceName, number } = req.body;
 
     if (!instanceName || !number) {
@@ -107,8 +107,6 @@ app.post('/api/whatsapp/check-user', async (req, res) => {
 
     try {
         console.log(`[API] Checking user ${number} on ${instanceName}`);
-
-        // 1. Check existence
         const formattedNumber = number.replace(/\D/g, '');
         const existsRes = await axios.post(`${EVO_API_URL}/chat/whatsappNumbers/${instanceName}`, {
             numbers: [formattedNumber]
@@ -120,7 +118,6 @@ app.post('/api/whatsapp/check-user', async (req, res) => {
             return res.json({ exists: false });
         }
 
-        // 2. Fetch Profile Picture
         let profilePicUrl = null;
         try {
             const ppRes = await axios.post(`${EVO_API_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
@@ -131,7 +128,6 @@ app.post('/api/whatsapp/check-user', async (req, res) => {
             console.warn(`[API] Failed to fetch profile pic for ${number}`);
         }
 
-        // 3. Fetch Profile Info (Status/About)
         let status = null;
         try {
             const profileRes = await axios.post(`${EVO_API_URL}/chat/fetchProfile/${instanceName}`, {
@@ -157,16 +153,13 @@ app.post('/api/whatsapp/check-user', async (req, res) => {
     }
 });
 
-// 3. API Client Wrapper (Actions Triggered by User/AI)
-
-// A. Create Instance / Get QR (Improved Logic)
-app.post('/api/whatsapp/connect', async (req, res) => {
+// A. Connect
+apiRouter.post('/connect', async (req, res) => {
     const { instanceName } = req.body;
 
     try {
         console.log(`[API] Connect/Create requested for: ${instanceName}`);
 
-        // 1. Fetch current instances to see if it exists
         const instancesResponse = await axios.get(`${EVO_API_URL}/instance/fetchInstances`, {
             headers: { 'apikey': EVO_API_KEY }
         });
@@ -183,7 +176,6 @@ app.post('/api/whatsapp/connect', async (req, res) => {
             return res.json(connectResponse.data);
         }
 
-        // 2. If it doesn't exist, Create it (Step 1: Create without QR)
         console.log(`[API] Instance "${instanceName}" not found. Creating new instance...`);
         await axios.post(`${EVO_API_URL}/instance/create`, {
             instanceName: instanceName,
@@ -193,7 +185,6 @@ app.post('/api/whatsapp/connect', async (req, res) => {
             headers: { 'apikey': EVO_API_KEY }
         });
 
-        // Step 2: Enable Full History Sync
         console.log(`[API] Configuring History Sync for "${instanceName}"...`);
         try {
             await axios.post(`${EVO_API_URL}/settings/set/${instanceName}`, {
@@ -210,15 +201,13 @@ app.post('/api/whatsapp/connect', async (req, res) => {
             console.error(`[API] Settings config failed:`, settingsError.message);
         }
 
-        // Step 3: Connect and Get QR
         console.log(`[API] Initiating connection for "${instanceName}"...`);
         const connectResponse = await axios.get(`${EVO_API_URL}/instance/connect/${instanceName}`, {
             headers: { 'apikey': EVO_API_KEY }
         });
 
-        const createResponse = connectResponse; // Use connect response as determination for success
+        const createResponse = connectResponse;
 
-        // 4. Configure Webhook
         try {
             await axios.post(`${EVO_API_URL}/webhook/set/${instanceName}`, {
                 url: `http://localhost:${PORT}/webhook/evolution`,
@@ -238,8 +227,6 @@ app.post('/api/whatsapp/connect', async (req, res) => {
     } catch (error: any) {
         const errorData = error.response?.data || error.message;
         console.error('[API] Connection Sequence Error:', JSON.stringify(errorData));
-
-        // Extract a readable message
         let msg = 'Failed to connect instance';
         if (error.response?.data?.response?.message) {
             msg = Array.isArray(error.response.data.response.message)
@@ -248,20 +235,18 @@ app.post('/api/whatsapp/connect', async (req, res) => {
         } else if (typeof errorData === 'string') {
             msg = errorData;
         }
-
         res.status(500).json({
             status: 500,
             error: 'Internal Server Error',
             response: {
                 message: [msg],
-                debug: errorData // Added for debugging
+                debug: errorData
             }
         });
     }
 });
 
-// B. Logout Instance
-app.post('/api/whatsapp/logout', async (req, res) => {
+apiRouter.post('/logout', async (req, res) => {
     const { instanceName } = req.body;
     try {
         console.log(`[API] Logout requested for ${instanceName}`);
@@ -270,17 +255,13 @@ app.post('/api/whatsapp/logout', async (req, res) => {
         });
         res.json(response.data);
     } catch (error: any) {
-        // PER USER REQUEST: "I dont want it to show real errors it should disconnected"
-        // Force success even if backend fails (e.g. already closed, not found, or API error)
         console.error(`[API] Logout error (ignored for UI force disconnect): ${JSON.stringify(error.response?.data || error.message)}`);
-
         console.log('[API] Treating error as success => Force Disconnect');
         res.json({ status: 'ok', message: 'Logged out (Forced)' });
     }
 });
 
-// C. Delete Instance
-app.delete('/api/whatsapp/delete/:instanceName', async (req, res) => {
+apiRouter.delete('/delete/:instanceName', async (req, res) => {
     const { instanceName } = req.params;
     try {
         console.log(`[API] Delete requested for ${instanceName}`);
@@ -289,16 +270,13 @@ app.delete('/api/whatsapp/delete/:instanceName', async (req, res) => {
         });
         res.json(response.data);
     } catch (error: any) {
-        // PER USER REQUEST: "I dont want it to show real errors it should disconnected"
-        // Force success even if backend fails (e.g. already closed, not found, or API error)
         console.error(`[API] Delete error (ignored for UI force disconnect): ${JSON.stringify(error.response?.data || error.message)}`);
-
         console.log('[API] Treating error as success => Force Delete');
         res.json({ status: 'ok', message: 'Instance deleted (Forced)' });
     }
 });
-// D. List All Instances
-app.get('/api/whatsapp/instances', async (req, res) => {
+
+apiRouter.get('/instances', async (req, res) => {
     try {
         console.log('[API] Fetching all instances');
         const response = await axios.get(`${EVO_API_URL}/instance/fetchInstances`, {
@@ -307,12 +285,11 @@ app.get('/api/whatsapp/instances', async (req, res) => {
         res.json(response.data);
     } catch (error: any) {
         console.error('[API] Error fetching instances:', error.response?.data || error.message);
-        res.json([]); // Return empty array on error
+        res.json([]);
     }
 });
 
-// E. Get Instance Status
-app.get('/api/whatsapp/status/:instanceName', async (req, res) => {
+apiRouter.get('/status/:instanceName', async (req, res) => {
     const { instanceName } = req.params;
     try {
         console.log(`[API] Status requested for ${instanceName}`);
@@ -326,8 +303,7 @@ app.get('/api/whatsapp/status/:instanceName', async (req, res) => {
     }
 });
 
-// F. Restart Instance
-app.post('/api/whatsapp/restart', async (req, res) => {
+apiRouter.post('/restart', async (req, res) => {
     const { instanceName } = req.body;
     try {
         console.log(`[API] Restart requested for ${instanceName}`);
@@ -337,32 +313,24 @@ app.post('/api/whatsapp/restart', async (req, res) => {
         res.json(response.data);
     } catch (error: any) {
         console.error('[API] Error restarting:', error.response?.data || error.message);
-        // Force success for UI consistency
         res.json({ status: 'ok', message: 'Restart initiated' });
     }
 });
 
-// G. Send Text Message
-app.post('/api/whatsapp/send', async (req, res) => {
+apiRouter.post('/send', async (req, res) => {
     const { instanceName, number, message } = req.body;
-
     if (!instanceName || !number || !message) {
         return res.status(400).json({ error: 'Missing required fields: instanceName, number, message' });
     }
-
     try {
         console.log(`[API] Sending message from ${instanceName} to ${number}`);
-
-        // Format number (ensure it has country code, no +, no spaces)
         const formattedNumber = number.replace(/\D/g, '');
-
         const response = await axios.post(`${EVO_API_URL}/message/sendText/${instanceName}`, {
             number: formattedNumber,
             text: message
         }, {
             headers: { 'apikey': EVO_API_KEY }
         });
-
         console.log(`[API] Message sent successfully`);
         res.json(response.data);
     } catch (error: any) {
@@ -371,8 +339,7 @@ app.post('/api/whatsapp/send', async (req, res) => {
     }
 });
 
-// H. Fetch Contacts
-app.get('/api/whatsapp/contacts/:instanceName', async (req, res) => {
+apiRouter.get('/contacts/:instanceName', async (req, res) => {
     const { instanceName } = req.params;
     try {
         console.log(`[API] Fetching contacts for ${instanceName}`);
@@ -382,12 +349,23 @@ app.get('/api/whatsapp/contacts/:instanceName', async (req, res) => {
         res.json(response.data);
     } catch (error: any) {
         console.error('[API] Error fetching contacts:', error.response?.data || error.message);
-        res.json([]); // Return empty array on error
+        res.json([]);
     }
 });
+
+app.use('/api/whatsapp', apiRouter);
+
+// 4. Reverse Proxy (For Manager UI and other Evolution API routes)
+// Forward everything else to Evolution API
+app.use('/', createProxyMiddleware({
+    target: EVO_API_URL,
+    changeOrigin: true,
+    ws: true, // Proxy WebSockets too
+    logLevel: 'debug'
+}));
 
 // Start Server
 app.listen(PORT, () => {
     console.log(`Flowcore AI Service running on port ${PORT}`);
-    console.log(`Evolution API Target: ${EVO_API_URL}`);
+    console.log(`Evolution API Target: ${EVO_API_URL} (Proxy Active)`);
 });
