@@ -361,7 +361,6 @@ app.use('/', createProxyMiddleware({
     target: EVO_API_URL,
     changeOrigin: true,
     ws: true, // Proxy WebSockets too
-    logLevel: 'debug'
 }));
 
 // Start Server
