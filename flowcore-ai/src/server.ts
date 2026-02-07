@@ -357,6 +357,7 @@ app.use('/api/whatsapp', apiRouter);
 
 // 4. Reverse Proxy (For Manager UI and other Evolution API routes)
 // Forward everything else to Evolution API
+// @ts-ignore
 app.use('/', createProxyMiddleware({
     target: EVO_API_URL,
     changeOrigin: true,
