@@ -1,0 +1,2 @@
+# Tell Railway to NEVER use Docker
+providers = ["nixpacks"]
